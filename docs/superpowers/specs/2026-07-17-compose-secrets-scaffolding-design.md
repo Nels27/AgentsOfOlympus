@@ -15,10 +15,32 @@ real service (Hermes, LangGraph, Ollama, etc.) — those are separate specs.
 
 Deploy target: a single home server/NUC, always-on, single host (no cluster).
 
+There is a pre-existing, already-approved implementation plan for this whole
+project: `Implementation Strategy.md` in the "Claude Code Grey Matter"
+Obsidian vault (`status: approved-for-implementation`, dated 2026-07-11). It
+covers six phases (Hermes core, Telegram/cron, worker confinement, LangGraph
+tier, observability, supply chain/backups/portability) on named hardware (a
+Beelink SER8, "Olympus"). This spec's scope corresponds to that plan's
+**§4, Phase 0** ("Repository Layout"), and adopts two of its binding
+decisions that our earlier design pass didn't have visibility into:
+
+- **Shell scripting conventions** (plan §4): `setup.sh` exports
+  `SCRIPTS_ROOT` with `set -euo pipefail`; child scripts carry source
+  guards; constants are `readonly` in `lib/constants.sh`. Our
+  `decrypt-secrets.sh` is a child script under this convention, not a
+  standalone one-off.
+- **Pantheon naming (plan Appendix A)**: Compose network names are canon —
+  `olympus` (gateway/reasoning tier), `delphi` (inference tier,
+  `internal: true`), `argus_net` (observability). This slice declares all
+  three now even though no services attach to them yet, since the
+  segmentation is already a settled decision and there's no benefit to
+  inventing a placeholder name we'd rename in the next slice.
+
 ## Goals
 
-- A `compose.yaml` skeleton with a shared network, ready for services to be
-  added incrementally.
+- A `compose.yaml` skeleton with the three trust-boundary networks
+  (`olympus`, `delphi`, `argus_net`), ready for services to be added
+  incrementally.
 - A secrets-at-rest story using SOPS + age: encrypted files safe to commit,
   one secret per file, decrypted on demand rather than kept in plaintext at
   rest.
@@ -50,7 +72,10 @@ orchestration-server/
 ├── secrets/                   # SOPS+age encrypted, one secret per file, committed
 │   └── .gitkeep                # empty for now; real secrets land with the services that need them
 └── scripts/
-    └── decrypt-secrets.sh     # decrypts secrets/* -> secrets.dec/*, 0600 perms
+    ├── setup.sh                # exports SCRIPTS_ROOT, set -euo pipefail, sources lib/constants.sh
+    ├── lib/
+    │   └── constants.sh         # readonly constants (paths, network names, etc.)
+    └── decrypt-secrets.sh      # decrypts secrets/* -> secrets.dec/*, 0600 perms; source-guarded child script
 ```
 
 `secrets/telegram_bot_token` and `secrets/hosted_provider_key` from
@@ -72,7 +97,10 @@ repo-root `.gitignore` (which doesn't currently exist and needs creating).
 - `scripts/decrypt-secrets.sh` iterates `secrets/*`, runs `sops -d` into
   `secrets.dec/<filename>`, and `chmod 600`s each output file. It writes to a
   temp location and moves files into place atomically (or cleans up on
-  failure) so `secrets.dec/` is never left partially populated.
+  failure) so `secrets.dec/` is never left partially populated. It follows
+  the homelab shell conventions: a source guard at the top, relies on
+  `SCRIPTS_ROOT` and any shared constants from `lib/constants.sh` (populated
+  by `scripts/setup.sh`), and runs under `set -euo pipefail`.
 - `compose.yaml` references `secrets.dec/*` via Docker Compose's native
   top-level `secrets:` key (file-based secrets), mounting each as
   `/run/secrets/<name>` inside a container — not environment variables, so
@@ -83,18 +111,21 @@ repo-root `.gitignore` (which doesn't currently exist and needs creating).
 
 ## compose.yaml and .env scope
 
-- `compose.yaml` defines only a shared network (e.g. `olympus-net`) and the
-  top-level `secrets:` block pointing at `secrets.dec/*`. No service entries
-  — those arrive with each service's own spec. Compose profiles (called out
-  in `ARCHITECTURE.md` for optional layers) are introduced once there are
-  real services to gate behind them.
+- `compose.yaml` defines the three canon networks — `olympus` (gateway),
+  `delphi` (inference tier, `internal: true` so it has no route to the
+  internet), and `argus_net` (observability) — plus the top-level `secrets:`
+  block pointing at `secrets.dec/*`. No service entries yet — those arrive
+  with each service's own spec, at which point they attach to the
+  appropriate one of these three networks per the trust-boundary design.
+  Compose profiles (called out in `ARCHITECTURE.md` for optional layers) are
+  introduced once there are real services to gate behind them.
 - `.env` holds only non-sensitive values (ports, `TZ`, model names),
   consumed via Compose's automatic `.env` interpolation.
 - `.env.example` is a committed copy of `.env`'s keys with placeholder/sane
   defaults; onboarding is `cp .env.example .env`.
-- Definition of done for this slice: `docker compose up` brings up an empty
-  network with no errors, `docker compose down` tears it down cleanly. No
-  service or port to check yet.
+- Definition of done for this slice: `docker compose up` brings up all three
+  empty networks with no errors, `docker compose down` tears them down
+  cleanly. No service or port to check yet.
 
 ## Verification
 
@@ -129,7 +160,11 @@ scaffolding):
    pairs naturally with a "run script, then compose up" restore runbook.
    Trade-off: plaintext secrets sit on disk (mitigated by `0600` + gitignore)
    for as long as the stack runs, and a rotated secret requires remembering
-   to re-run the script.
+   to re-run the script. This matches the approved plan's own decision
+   record ("Hardened Option 2": Compose file-based secrets + SOPS/age +
+   `.env` for non-sensitive config only), arrived at independently during
+   this design pass before the existing plan was found — a second point of
+   agreement, not just adopted wholesale.
 2. **direnv-style auto-decrypt on shell entry.** Rejected: poor fit for a
    headless server that isn't driven by an interactive login shell.
 3. **Just-in-time per-container decryption** (`sops exec-env` in each
