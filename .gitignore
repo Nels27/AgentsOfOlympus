@@ -1,0 +1,4 @@
+orchestration-server/.env
+orchestration-server/secrets/*
+.claude/settings.local.json
+.claude/hooks/*
