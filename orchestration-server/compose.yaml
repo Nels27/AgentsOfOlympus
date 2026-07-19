@@ -1,0 +1,10 @@
+name: agents-of-olympus
+
+networks:
+  olympus:
+    name: olympus
+  delphi:
+    name: delphi
+    internal: true
+  argus_net:
+    name: argus_net

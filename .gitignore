@@ -1,4 +1,7 @@
 orchestration-server/.env
-orchestration-server/secrets/*
+orchestration-server/secrets.dec/
+# dev-only age key stub -- prod (Beelink SER8) generates its own; commit
+# .sops.yaml for real once the production public key exists
+orchestration-server/.sops.yaml
 .claude/settings.local.json
 .claude/hooks/*
