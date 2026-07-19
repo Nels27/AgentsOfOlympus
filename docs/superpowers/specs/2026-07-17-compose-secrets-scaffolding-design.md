@@ -145,8 +145,13 @@ scaffolding):
 1. Generate a throwaway age keypair, encrypt a dummy secret with `sops`, run
    `decrypt-secrets.sh`, confirm `secrets.dec/` gets correct plaintext with
    `0600` perms.
-2. `docker compose config` to validate `compose.yaml` syntax (exit 0,
-   prints the resolved config with all three networks listed).
+2. `docker compose config` to validate `compose.yaml` syntax: exit 0.
+   Verified this still schema-validates unused top-level networks (an
+   invalid key inside one correctly fails with exit 1) — but confirmed the
+   resolved output only ever echoes back `name:`/`services: {}`, since
+   networks nothing attaches to are dropped from the printed config
+   entirely. So "exit 0" is the check; don't expect to see the three
+   networks listed in the output.
 3. `git status` after generating `secrets.dec/` and `.env` to confirm
    `.gitignore` keeps them untracked.
 
