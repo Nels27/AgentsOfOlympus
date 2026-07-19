@@ -65,7 +65,7 @@ decisions that our earlier design pass didn't have visibility into:
 
 ```
 orchestration-server/
-├── compose.yaml              # shared network + secrets block, no services yet
+├── compose.yaml              # three canon networks, no secrets: block or services yet
 ├── .env                      # non-sensitive config: ports, TZ, model names (gitignored)
 ├── .env.example               # committed template with the same keys
 ├── .sops.yaml                 # SOPS config: age recipient, path rule for secrets/*
@@ -101,10 +101,15 @@ repo-root `.gitignore` (which doesn't currently exist and needs creating).
   the homelab shell conventions: a source guard at the top, relies on
   `SCRIPTS_ROOT` and any shared constants from `lib/constants.sh` (populated
   by `scripts/setup.sh`), and runs under `set -euo pipefail`.
-- `compose.yaml` references `secrets.dec/*` via Docker Compose's native
-  top-level `secrets:` key (file-based secrets), mounting each as
-  `/run/secrets/<name>` inside a container — not environment variables, so
-  they don't leak into `docker inspect` or process listings.
+- Once a real secret has a consumer, `compose.yaml` will reference
+  `secrets.dec/<name>` via Docker Compose's native top-level `secrets:` key
+  (file-based secrets), mounting each as `/run/secrets/<name>` inside a
+  container — not environment variables, so they don't leak into
+  `docker inspect` or process listings. This slice doesn't declare that
+  block yet (see "compose.yaml and .env scope" below) — Compose requires
+  each `secrets:` entry to be a concrete named secret with a `file:` path,
+  and there's no real secret name to give one until a service exists to
+  consume it.
 - Future restore runbook: clone repo → place age key at
   `~/.config/sops/age/keys.txt` → `./scripts/decrypt-secrets.sh` →
   `docker compose up`.
@@ -113,19 +118,24 @@ repo-root `.gitignore` (which doesn't currently exist and needs creating).
 
 - `compose.yaml` defines the three canon networks — `olympus` (gateway),
   `delphi` (inference tier, `internal: true` so it has no route to the
-  internet), and `argus_net` (observability) — plus the top-level `secrets:`
-  block pointing at `secrets.dec/*`. No service entries yet — those arrive
-  with each service's own spec, at which point they attach to the
-  appropriate one of these three networks per the trust-boundary design.
-  Compose profiles (called out in `ARCHITECTURE.md` for optional layers) are
+  internet), and `argus_net` (observability). No `secrets:` block and no
+  service entries yet — both arrive with the first real service's own spec,
+  at which point services attach to the appropriate network per the
+  trust-boundary design and the first named secret gets declared. Compose
+  profiles (called out in `ARCHITECTURE.md` for optional layers) are
   introduced once there are real services to gate behind them.
 - `.env` holds only non-sensitive values (ports, `TZ`, model names),
   consumed via Compose's automatic `.env` interpolation.
 - `.env.example` is a committed copy of `.env`'s keys with placeholder/sane
   defaults; onboarding is `cp .env.example .env`.
-- Definition of done for this slice: `docker compose up` brings up all three
-  empty networks with no errors, `docker compose down` tears them down
-  cleanly. No service or port to check yet.
+- Definition of done for this slice: `docker compose config` validates
+  `compose.yaml` syntactically with no errors. **Not** `docker compose up`
+  — verified empirically that a networks-only compose file (no services)
+  makes `docker compose up` print `no service selected` and exit 1, creating
+  no networks at all; Compose only materializes a network when some service
+  attaches to it. Proving the three networks actually come up is naturally
+  deferred to the first service that attaches to them (Phase 1, the Hermes
+  gateway on `olympus`) — there's no way to prove it honestly before then.
 
 ## Verification
 
@@ -135,11 +145,14 @@ scaffolding):
 1. Generate a throwaway age keypair, encrypt a dummy secret with `sops`, run
    `decrypt-secrets.sh`, confirm `secrets.dec/` gets correct plaintext with
    `0600` perms.
-2. `docker compose config` to validate `compose.yaml` syntax.
-3. `docker compose up` / `down` to confirm the network + secrets scaffolding
-   starts and tears down cleanly with zero services.
-4. `git status` after generating `secrets.dec/` and `.env` to confirm
+2. `docker compose config` to validate `compose.yaml` syntax (exit 0,
+   prints the resolved config with all three networks listed).
+3. `git status` after generating `secrets.dec/` and `.env` to confirm
    `.gitignore` keeps them untracked.
+
+`docker compose up`/`down` are deliberately **not** part of this slice's
+verification — see "compose.yaml and .env scope" above for why a
+service-less compose file can't prove the networks come up.
 
 ## Error handling
 
