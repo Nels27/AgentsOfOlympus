@@ -1,0 +1,12 @@
+# Copy this file to .sops.yaml and replace the placeholder below with your
+# own age public key.
+#
+# Generate a keypair (do this once per host, keep the private key out of
+# git): age-keygen -o ~/.config/sops/age/keys.txt
+# The command prints "Public key: age1...". Use that value here.
+#
+#   cp .sops.yaml.example .sops.yaml
+#
+creation_rules:
+  - path_regex: secrets/.*
+    age: age1YOUR_PUBLIC_KEY_HERE

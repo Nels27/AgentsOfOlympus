@@ -68,7 +68,8 @@ orchestration-server/
 ├── compose.yaml              # three canon networks, no secrets: block or services yet
 ├── .env                      # non-sensitive config: ports, TZ, model names (gitignored)
 ├── .env.example               # committed template with the same keys
-├── .sops.yaml                 # SOPS config: age recipient, path rule for secrets/*
+├── .sops.yaml                 # SOPS config: age recipient, path rule for secrets/* (gitignored — per-deployer)
+├── .sops.yaml.example         # committed template; each deployer fills in their own age public key
 ├── secrets/                   # SOPS+age encrypted, one secret per file, committed
 │   └── .gitkeep                # empty for now; real secrets land with the services that need them
 └── scripts/
@@ -84,12 +85,18 @@ here, not deliverables of this slice — no service exists yet to consume
 them. This slice ships the encrypted-storage mechanism; verification (below)
 uses a throwaway dummy secret to prove the mechanism works end to end.
 
-`secrets.dec/` (plaintext decrypt output) and `.env` are added to a
-repo-root `.gitignore` (which doesn't currently exist and needs creating).
+`secrets.dec/` (plaintext decrypt output), `.env`, and the real `.sops.yaml`
+are added to the repo-root `.gitignore`. `.sops.yaml` is per-deployer (each
+host generates its own age keypair and fills in its own public key, mirroring
+the `.env`/`.env.example` split) rather than committed — discovered during
+implementation that committing one specific machine's public key would pin
+every future secret to a key that's meant to be replaced once the real
+production host (the Beelink SER8) generates its own.
 
 ## Secrets flow
 
-- `.sops.yaml` at the repo root declares the age public key as recipient and
+- `.sops.yaml` (copied locally from the committed `.sops.yaml.example`) at
+  the repo root declares the age public key as recipient and
   scopes encryption to `secrets/**`, so `sops` knows how to encrypt/decrypt
   those files without per-invocation flags.
 - The age **private** key lives outside the repo, at SOPS's default lookup

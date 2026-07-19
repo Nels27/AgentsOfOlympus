@@ -147,17 +147,34 @@ git commit -m "feat: add shell scaffolding (SCRIPTS_ROOT, source-guarded constan
 
 ---
 
-### Task 3: Age keypair + `.sops.yaml` + `secrets/` directory
+### Task 3: Age keypair + `.sops.yaml.example` + `secrets/` directory
 
 **Files:**
-- Create: `orchestration-server/.sops.yaml`
+- Create: `orchestration-server/.sops.yaml.example` (committed template — placeholder public key)
+- Create: `orchestration-server/.sops.yaml` (local only, gitignored — real public key, per deployer)
 - Create: `orchestration-server/secrets/.gitkeep`
+- Modify: repo-root `.gitignore` (add `orchestration-server/.sops.yaml`)
 - Host action (not committed): age keypair at `~/.config/sops/age/keys.txt`
 
-**Interfaces:**
-- Produces: the age public key embedded in `.sops.yaml`'s `creation_rules`, which Task 4's `decrypt-secrets.sh` relies on implicitly (via `sops` reading `.sops.yaml` automatically — no direct code dependency).
+**Deviation from the original plan, discovered during execution:** the plan
+originally called for committing `.sops.yaml` directly with a real public
+key baked in. Generating the keypair on the WSL dev sandbox (not the
+eventual Beelink production host) surfaced two problems: (1) that key isn't
+meant to be the long-term production key, so committing its public half
+would pin every future secret to a recipient about to be replaced, and (2)
+if this project is ever shared, a hardcoded public key forces every
+deployer to use one specific person's key rather than generating their own.
+Fixed by mirroring the existing `.env`/`.env.example` split:
+`.sops.yaml.example` is the committed template, `.sops.yaml` is real,
+per-deployer, and gitignored.
 
-- [ ] **Step 1: Generate the production age keypair (skip if you already have one)**
+**Interfaces:**
+- Produces: the age public key embedded in the local `.sops.yaml`'s
+  `creation_rules`, which Task 4's `decrypt-secrets.sh` relies on implicitly
+  (via `sops` reading `.sops.yaml` automatically — no direct code
+  dependency).
+
+- [ ] **Step 1: Generate an age keypair for local dev/testing (skip if you already have one)**
 
 ```bash
 mkdir -p ~/.config/sops/age
@@ -171,8 +188,31 @@ Public key: age1chygnk8nn8vqp7exreqgvmg75nzethtcn940jl4lru9946w0rd6qrcq4cy
 ```
 
 The same public key is also written as a comment inside the key file itself.
+**Note:** if this is run on the eventual Beelink production host rather than
+a dev sandbox, this key IS the real one — skip Step 2's `.example` framing
+and just write `.sops.yaml` directly with this public key, then commit it
+per Task 3 of a future "go to production" slice (out of scope here).
 
-- [ ] **Step 2: Extract the public key and write `.sops.yaml`**
+- [ ] **Step 2: Write the committed template `.sops.yaml.example`**
+
+```bash
+cat > orchestration-server/.sops.yaml.example <<'EOF'
+# Copy this file to .sops.yaml and replace the placeholder below with your
+# own age public key.
+#
+# Generate a keypair (do this once per host, keep the private key out of
+# git): age-keygen -o ~/.config/sops/age/keys.txt
+# The command prints "Public key: age1...". Use that value here.
+#
+#   cp .sops.yaml.example .sops.yaml
+#
+creation_rules:
+  - path_regex: secrets/.*
+    age: age1YOUR_PUBLIC_KEY_HERE
+EOF
+```
+
+- [ ] **Step 3: Write the local, gitignored `.sops.yaml` with your real dev key**
 
 ```bash
 PUBKEY=$(grep "public key:" ~/.config/sops/age/keys.txt | awk '{print $NF}')
@@ -184,14 +224,24 @@ EOF
 cat orchestration-server/.sops.yaml
 ```
 
-- [ ] **Step 3: Create the (currently empty) secrets directory**
+- [ ] **Step 4: Add `orchestration-server/.sops.yaml` to the repo-root `.gitignore`**
+
+```bash
+echo 'orchestration-server/.sops.yaml' >> .gitignore
+git check-ignore -q orchestration-server/.sops.yaml && echo "OK: ignored"
+git check-ignore -q orchestration-server/.sops.yaml.example && echo "PROBLEM: .example also ignored" || echo "OK: .example not ignored"
+```
+
+Expected: `OK: ignored` then `OK: .example not ignored`.
+
+- [ ] **Step 5: Create the (currently empty) secrets directory**
 
 ```bash
 mkdir -p orchestration-server/secrets
 touch orchestration-server/secrets/.gitkeep
 ```
 
-- [ ] **Step 4: Verify the round trip — encrypt and decrypt a throwaway value**
+- [ ] **Step 6: Verify the round trip — encrypt and decrypt a throwaway value**
 
 ```bash
 cd orchestration-server
@@ -208,18 +258,19 @@ sops --input-type binary --output-type binary -d secrets/smoke_test_secret
 
 Expected: `dummy-test-token-value` printed to stdout.
 
-- [ ] **Step 5: Remove the throwaway secret (real secrets arrive with their consuming service)**
+- [ ] **Step 7: Remove the throwaway secret (real secrets arrive with their consuming service)**
 
 ```bash
 rm secrets/smoke_test_secret
 cd ..
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit — template and placeholder only, not the local `.sops.yaml`**
 
 ```bash
-git add orchestration-server/.sops.yaml orchestration-server/secrets/.gitkeep
-git commit -m "feat: configure SOPS+age for secrets/, no real secrets yet"
+git add .gitignore orchestration-server/.sops.yaml.example orchestration-server/secrets/.gitkeep
+git status --porcelain  # confirm orchestration-server/.sops.yaml is NOT staged
+git commit -m "feat: add .sops.yaml.example template, gitignore real .sops.yaml"
 ```
 
 ---
