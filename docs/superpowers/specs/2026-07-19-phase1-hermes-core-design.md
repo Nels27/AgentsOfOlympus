@@ -82,14 +82,17 @@ non-secret and can proceed normally.
    nousresearch/hermes-agent setup` — populates `~/.hermes/.env` (secrets)
    and `~/.hermes/config.yaml` (everything else) with your real Anthropic
    key.
-3. **Ollama provider registration.** `config.yaml` isn't secret, so this
-   step is done directly (by editing the file or via `hermes config`
-   commands — exact syntax to be confirmed against `hermes config --help`/
-   `hermes model --help` when writing the implementation plan, same as
-   Phase 0 verified real `sops`/`docker compose` behavior before writing
-   exact steps). Endpoint: `http://host.docker.internal:11434` (Ollama runs
-   on the host; Hermes runs in a container, so `localhost` would resolve to
-   the container itself).
+3. **Ollama provider registration (interactive, run by you).** Verified
+   against real `--help` output: `hermes model` is fully interactive (no
+   flags for specifying a provider/endpoint directly — `--refresh`,
+   `--portal-url`, and OAuth-related flags only), and `hermes config set`'s
+   key schema isn't documented in `--help` alone. Rather than guess at a
+   `config.yaml` schema, this is a second manual step, same pattern as the
+   setup wizard: `docker run -it --rm -v ~/.hermes:/opt/data
+   nousresearch/hermes-agent model`, picking/confirming Ollama as an
+   available provider pointing at `http://host.docker.internal:11434`
+   (Ollama runs on the host; Hermes runs in a container, so `localhost`
+   would resolve to the container itself).
 4. **`compose.yaml` `hermes` service.** Digest-pinned
    `nousresearch/hermes-agent@sha256:b29520aa3244ab4f65cb9d66ba86db5e59d2f581c3b7401cd642e4325ca4883d`
    (pulled and verified during this design pass — `linux/amd64`, 2.61GB),
@@ -107,9 +110,9 @@ Translating the vault plan's phase gate ("CLI answers; gateway process
 healthy; container survives restart with memory intact") into concrete
 checks:
 
-1. `hermes chat` (exact non-interactive/`-q` flag to be confirmed against
-   `hermes chat --help`) returns a real response from the Anthropic
-   provider.
+1. `hermes -z "<test prompt>"` (the top-level non-interactive one-shot
+   flag, confirmed against real `hermes --help` output) returns a real
+   response from the Anthropic provider.
 2. `docker compose up -d hermes` then `docker compose ps` shows the
    container healthy/running.
 3. `docker network inspect olympus` shows the `hermes` container attached
@@ -143,11 +146,9 @@ state. Revisit only if Hermes ever supports reading secrets from
 
 ## Open questions
 
-No design-level open questions — every section was reviewed and approved.
-Two items are deliberately left as **implementation-syntax lookups**, not
-open design questions: the exact `hermes config`/`hermes model` invocation
-for registering a second provider, and the exact `hermes chat` flag for a
-non-interactive smoke test. Both get resolved against real `--help` output
-when writing the implementation plan, the same way Phase 0 verified real
-`sops`/`docker compose` behavior before committing to exact commands rather
-than guessing.
+None. Both implementation-syntax lookups flagged during design were
+resolved against real `--help` output before the plan was written:
+`hermes model` is interactive-only (folded into Component 3 as a second
+manual step, same pattern as the setup wizard), and the top-level `-z
+PROMPT` flag (seen in `hermes --help`'s usage line) is the non-interactive
+smoke-test invocation, used as `hermes -z "<prompt>"`.
