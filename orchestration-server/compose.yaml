@@ -8,3 +8,20 @@ networks:
     internal: true
   argus_net:
     name: argus_net
+
+services:
+  hermes:
+    image: nousresearch/hermes-agent@sha256:b29520aa3244ab4f65cb9d66ba86db5e59d2f581c3b7401cd642e4325ca4883d
+    container_name: hermes
+    command: gateway run
+    restart: unless-stopped
+    environment:
+      API_SERVER_ENABLED: "true"
+      HERMES_DASHBOARD: "1"
+    volumes:
+      - ${HOME}/.hermes:/opt/data
+    networks:
+      - olympus
+    ports:
+      - "127.0.0.1:8642:8642"
+      - "127.0.0.1:9119:9119"
