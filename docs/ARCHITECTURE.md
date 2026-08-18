@@ -7,7 +7,7 @@ orchestration-server/
 ├── compose.yaml              # all services, profiles for optional layers
 ├── .env                      # NON-SENSITIVE config only (ports, TZ, model names)
 ├── secrets/                  # SOPS+age encrypted, one secret per file, 0600
-│   ├── telegram_bot_token
+│   ├── signal_registration    # Signal is the messaging platform (decided 2026-08-18, was Telegram)
 │   ├── hosted_provider_key
 │   └── ...
 ├── services/
