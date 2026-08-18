@@ -17,11 +17,10 @@ services:
     restart: unless-stopped
     environment:
       API_SERVER_ENABLED: "true"
-      HERMES_DASHBOARD: "1"
+      API_SERVER_KEY: ${API_SERVER_KEY}
     volumes:
       - ${HOME}/.hermes:/opt/data
     networks:
       - olympus
     ports:
       - "127.0.0.1:8642:8642"
-      - "127.0.0.1:9119:9119"

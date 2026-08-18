@@ -97,11 +97,36 @@ non-secret and can proceed normally.
    `nousresearch/hermes-agent@sha256:b29520aa3244ab4f65cb9d66ba86db5e59d2f581c3b7401cd642e4325ca4883d`
    (pulled and verified during this design pass — `linux/amd64`, 2.61GB),
    `command: gateway run`, `restart: unless-stopped`, `~/.hermes:/opt/data`
-   volume mount, attached to the `olympus` network, `API_SERVER_ENABLED=true`
-   and `HERMES_DASHBOARD=1` env vars, ports bound to loopback only:
-   `127.0.0.1:8642:8642` (gateway API) and `127.0.0.1:9119:9119`
-   (dashboard). No `0.0.0.0` binding anywhere, per the vault plan's network
-   segmentation rule (§5: "No service binds `0.0.0.0`").
+   volume mount, attached to the `olympus` network, port bound to loopback
+   only: `127.0.0.1:8642:8642` (gateway API). No `0.0.0.0` binding anywhere,
+   per the vault plan's network segmentation rule (§5: "No service binds
+   `0.0.0.0`").
+
+   **Discovered live, during bring-up (Task 4), not anticipated at design
+   time:** `API_SERVER_ENABLED=true` requires `API_SERVER_KEY` to be set —
+   without it the API server component refuses to start and the container
+   log-spams the same error repeatedly (container itself stays up; s6
+   supervises and retries the failed sub-service, `RestartCount` on the
+   container stays 0). This is a real secret (an auth token protecting the
+   gateway's OpenAI-compatible API) that has to be supplied *through*
+   `compose.yaml`, which is git-committed — unlike the hosted-provider key
+   (which lives in Hermes's own `~/.hermes/.env`, outside git entirely).
+   Routed through the Phase 0 SOPS pipeline as `secrets/api_server_key`
+   (the first real secret to go through it): a new
+   `scripts/compose-up.sh` wrapper decrypts secrets, exports
+   `API_SERVER_KEY` from `secrets.dec/api_server_key` into the shell
+   environment, then execs `docker compose "$@"` so `compose.yaml`'s
+   `${API_SERVER_KEY}` interpolates correctly. `compose.yaml` itself just
+   references `${API_SERVER_KEY}` — bringing the gateway up now goes
+   through this wrapper (`./scripts/compose-up.sh up -d hermes`) rather
+   than a bare `docker compose up`.
+
+   Also discovered live: `HERMES_DASHBOARD=1` (originally planned) refuses
+   to bind without an auth provider configured (password hash or OAuth),
+   which is its own separate secret/setup this slice doesn't need. Dropped
+   the dashboard (env var and its `127.0.0.1:9119:9119` port) from this
+   slice entirely — Phase 1's actual phase gate never required it; revisit
+   when something actually needs the dashboard UI.
 5. **Phase gate verification** (see below).
 
 ## Phase gate verification
