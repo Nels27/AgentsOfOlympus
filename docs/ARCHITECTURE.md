@@ -7,11 +7,14 @@ orchestration-server/
 ├── compose.yaml              # all services, profiles for optional layers
 ├── .env                      # NON-SENSITIVE config only (ports, TZ, model names)
 ├── secrets/                  # SOPS+age encrypted, one secret per file, 0600
-│   ├── signal_registration    # Signal is the messaging platform (decided 2026-08-18, was Telegram)
 │   ├── hosted_provider_key
-│   └── ...
+│   └── ...                   # signal-cli's linked-device session state is
+│                              # a directory, not a single value, so it's a
+│                              # bind-mounted volume (see services/signal-cli/),
+│                              # not a SOPS secret here
 ├── services/
 │   ├── hermes/               # config.yaml, context files (AGENTS.md / SOUL.md)
+│   ├── signal-cli/           # containerized signal-cli daemon (Phase 2) — own volume for linked-device session state
 │   ├── langgraph/            # Dockerfile, pipeline defs, MCP server
 │   ├── worker-image/         # Dockerfile for the confined terminal backend
 │   ├── ollama/               # Modelfiles, model manifest
