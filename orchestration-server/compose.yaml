@@ -24,3 +24,14 @@ services:
       - olympus
     ports:
       - "127.0.0.1:8642:8642"
+
+  signal-cli:
+    image: registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078
+    container_name: signal-cli
+    user: "${UID}:${GID}"
+    command: ["-a", "${SIGNAL_ACCOUNT}", "-d", "/data", "daemon", "--http", "0.0.0.0:8080"]
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.signal-cli:/data
+    networks:
+      - olympus
