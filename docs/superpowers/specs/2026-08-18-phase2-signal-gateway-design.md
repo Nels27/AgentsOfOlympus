@@ -191,11 +191,15 @@ repeatable, not a special code path.
 
 ## Open questions
 
-Two items flagged as genuinely unverified rather than guessed at:
+One item resolved during implementation, one still genuinely open:
 
-1. **`SIGNAL_ALLOWED_USERS`'s exact identity format** (phone number vs.
-   Signal's internal UUID) — not documented anywhere found during
-   research. Resolve at implementation time against real behavior.
+1. **`SIGNAL_ALLOWED_USERS`'s exact identity format — resolved.** Not
+   documented anywhere found during research, but turned out not to need
+   guessing: Hermes's own `hermes gateway setup` wizard sets it
+   automatically (written to `~/.hermes/.env`, not `config.yaml`), and a
+   length-only check (never exposing the actual value) confirmed it
+   matches `SIGNAL_ACCOUNT`'s length — both 12 characters, consistent with
+   E.164 phone format. No manual access-control step was needed.
 2. **`signal-cli`'s behavior across a Signal "Change Number" event** for a
    linked device — whether it resyncs gracefully or requires re-linking.
    Not investigated further; out of scope for this slice per Non-goals.
