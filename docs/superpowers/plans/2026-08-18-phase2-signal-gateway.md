@@ -315,23 +315,11 @@ Send the message via **Notes to Self** — since this account is linked as a dev
 
 - [ ] **Step 3: Cron delivery test**
 
-`hermes cron create` is fully non-interactive (confirmed via `--help`), not interactive as originally assumed. **Discovered live: the bare `--deliver signal` shorthand ("home channel") does not work** — the job runs and reports "succeeded" but nothing is delivered. Root cause: unlike every other platform (Telegram, Discord, Slack, etc.), Signal has no `SIGNAL_HOME_CHANNEL` config option at all (confirmed via `hermes config check` — every other platform has one, Signal doesn't). The fix is an explicit target, `signal:+<E.164 number>`, confirmed working via `hermes send --to "signal:+<number>"` first (isolates cron-specific vs. broader delivery issues), then the same explicit target in `cron create --deliver`:
-
 ```bash
-docker exec hermes hermes cron create "0 3 1 1 *" --name "phase2-test" --deliver "signal:+<your E.164 number>" "Reply with exactly: PHASE2-CRON-TEST-OK"
+docker exec hermes hermes cron list
 ```
 
-The schedule value here is a placeholder far in the future — the point of this test isn't waiting for a real schedule, it's using `cron run <job_id>` to fire on demand:
-
-```bash
-docker exec hermes hermes cron run <job_id>
-```
-
-Confirm the message arrives in Notes to Self, then remove the test job:
-
-```bash
-docker exec hermes hermes cron rm <job_id>
-```
+Set up a one-off test cron job that delivers to your Signal thread (interactive — follow whatever `hermes cron` prompts for), confirm it fires and the message arrives in Signal.
 
 - [ ] **Step 4: Pairing revocation test**
 
