@@ -1,0 +1,330 @@
+# Phase 2: Signal Gateway Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Wire Signal into Hermes as a real, working messaging channel — `signal-cli` running as its own Compose service, linked to the operator's personal Signal account, with Hermes talking to it and passing the phase gate (DM round-trip, cron delivery, pairing revocation).
+
+**Architecture:** `signal-cli` runs as its own container on the `olympus` network (no host port exposure — only Hermes needs to reach it). Linking happens once, manually, via a QR code rendered from a captured link URI (headless-safe, verified live during design). Hermes is pointed at the daemon via env vars and enabled through its own interactive `gateway setup` wizard.
+
+**Tech Stack:** `signal-cli` (Java, official GitLab packaging image), `qrencode` (host tool), Docker Compose v2.
+
+**Spec:** `docs/superpowers/specs/2026-08-18-phase2-signal-gateway-design.md`
+
+## Global Constraints
+
+- `signal-cli` image, digest-pinned: `registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa`.
+- `signal-cli` gets no host port mapping — only reachable from other containers on `olympus`.
+- Linked-device session state lives at `~/.signal-cli` (host) → `/data` (container, explicit, not relying on the image's default). Not part of the SOPS `secrets/` pipeline — it's a directory, not a single value.
+- `SIGNAL_ALLOW_ALL_USERS` (and the generic `GATEWAY_ALLOW_ALL_USERS`) never set to `true`.
+- Real account linking and `hermes gateway setup` are manual, interactive steps run by the operator — never scripted or driven through the Bash tool, same rule Phase 1 established for real credentials.
+- `hermes gateway setup` takes zero flags (confirmed via `--help` during plan-writing) — it's unconditionally interactive, no non-interactive path exists.
+
+---
+
+### Task 1: Install `qrencode`
+
+**Files:** None — host package install.
+
+**Interfaces:** None.
+
+- [ ] **Step 1: Install**
+
+```bash
+sudo apt update && sudo apt install -y qrencode
+```
+
+- [ ] **Step 2: Verify**
+
+```bash
+qrencode --version
+```
+
+Expected: version output (e.g. `4.1.1`), exit 0.
+
+No commit for this task — nothing in it touches the repo.
+
+---
+
+### Task 2: Link the Signal account (manual — run by you)
+
+**Files:** None created in the repo — this populates `~/.signal-cli` on the host, outside the repo (same treatment as `~/.hermes`: a separately-managed stateful volume, not SOPS-encrypted).
+
+**Interfaces:**
+- Produces: linked-device session data in `~/.signal-cli`, consumed by Task 3's `signal-cli` daemon service via the `~/.signal-cli:/data` volume mount.
+
+- [ ] **Step 1: Run the link command yourself**
+
+```bash
+mkdir -p ~/.signal-cli
+docker run --rm -v ~/.signal-cli:/data \
+  registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa \
+  -d /data link -n "HermesAgent" > /tmp/signal-link.txt 2>&1 &
+```
+
+Run this in the background (`&`) or a second terminal — it takes ~20-40 seconds (JVM cold start + a round trip to Signal's servers, confirmed by timing this live during design) before the URI appears, then it blocks waiting for the phone-side scan. Watch for the URI:
+
+```bash
+sleep 30 && cat /tmp/signal-link.txt
+```
+
+Expected: a line containing `sgnl://linkdevice?uuid=...&pub_key=...`.
+
+- [ ] **Step 2: Render it as a scannable QR code**
+
+```bash
+grep -o 'sgnl://linkdevice[^[:space:]]*' /tmp/signal-link.txt | qrencode -o ~/signal-link.png -s 12 -m 4
+```
+
+- [ ] **Step 3: Scan it**
+
+Open `~/signal-link.png` (via your IDE's file viewer, or Windows Explorer — same filesystem, path is `\\wsl$\...` or the mapped drive). On your phone: Signal app → Settings → Linked Devices → tap **+** → scan the QR code.
+
+- [ ] **Step 4: Confirm the link completed**
+
+The backgrounded `docker run` from Step 1 should exit on its own (not hang) once the phone confirms the scan. Check:
+
+```bash
+jobs
+ls -la ~/.signal-cli
+```
+
+Expected: the background job is no longer running (completed), and `~/.signal-cli` contains files (exact layout wasn't independently verified during design — confirm here that it's non-empty, which is what matters for Task 3 to have something to serve).
+
+- [ ] **Step 5: Clean up the temp file**
+
+```bash
+rm -f /tmp/signal-link.txt ~/signal-link.png
+```
+
+No commit for this task.
+
+---
+
+### Task 3: Add the `signal-cli` service to `compose.yaml`
+
+**Files:**
+- Modify: `orchestration-server/compose.yaml`
+
+**Interfaces:**
+- Consumes: `~/.signal-cli` from Task 2.
+- Produces: a running `signal-cli` daemon on `olympus`, reachable at `http://signal-cli:8080` from other containers on that network — consumed by Task 4/5's `hermes` wiring.
+
+- [ ] **Step 1: Read the current file**
+
+```bash
+cat orchestration-server/compose.yaml
+```
+
+Expected: the `hermes` service from Phase 1, no `signal-cli` service yet.
+
+- [ ] **Step 2: Add the `signal-cli` service**
+
+```yaml
+  signal-cli:
+    image: registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa
+    container_name: signal-cli
+    command: ["-a", "${SIGNAL_ACCOUNT}", "-d", "/data", "daemon", "--http", "0.0.0.0:8080"]
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.signal-cli:/data
+    networks:
+      - olympus
+```
+
+Append this under the existing `services:` key, alongside `hermes`.
+
+- [ ] **Step 3: Add `SIGNAL_ACCOUNT` to `.env.example` and your local `.env`**
+
+```bash
+echo 'SIGNAL_ACCOUNT=+1XXXXXXXXXX' >> orchestration-server/.env.example
+```
+
+Then in your local, gitignored `orchestration-server/.env`, set it to your real E.164-format phone number (the one you linked in Task 2) — not the placeholder.
+
+- [ ] **Step 4: Validate syntax**
+
+```bash
+cd orchestration-server
+docker compose config
+```
+
+Expected: exit 0. `signal-cli` should now appear fully resolved in the output (it has a service referencing it — itself — unlike Phase 0's unused networks).
+
+- [ ] **Step 5: Bring it up and verify it's running**
+
+```bash
+docker compose up -d signal-cli
+docker compose ps
+docker logs signal-cli --tail 20
+```
+
+Expected: `signal-cli` shows `Up`; logs show the daemon starting without repeated errors (compare against the log-spam pattern Phase 1 hit with a missing `API_SERVER_KEY` — if you see something looping like that here, the account likely isn't actually linked yet from Task 2).
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd ..
+git add orchestration-server/compose.yaml orchestration-server/.env.example
+git commit -m "feat: add signal-cli daemon service (digest-pinned, olympus network)"
+```
+
+---
+
+### Task 4: Wire Hermes to the `signal-cli` daemon
+
+**Files:**
+- Modify: `orchestration-server/compose.yaml`
+
+**Interfaces:**
+- Consumes: the running `signal-cli` service from Task 3 (`http://signal-cli:8080`).
+- Produces: `hermes` service configured with `SIGNAL_HTTP_URL`/`SIGNAL_ACCOUNT`, ready for Task 5's `gateway setup`.
+
+- [ ] **Step 1: Add env vars and `depends_on` to the `hermes` service**
+
+In `orchestration-server/compose.yaml`, under the existing `hermes` service's `environment:` block, add two keys, and add a new `depends_on:` key alongside `networks:`:
+
+```yaml
+  hermes:
+    image: nousresearch/hermes-agent@sha256:b29520aa3244ab4f65cb9d66ba86db5e59d2f581c3b7401cd642e4325ca4883d
+    container_name: hermes
+    command: gateway run
+    restart: unless-stopped
+    depends_on:
+      - signal-cli
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_KEY: ${API_SERVER_KEY}
+      SIGNAL_HTTP_URL: http://signal-cli:8080
+      SIGNAL_ACCOUNT: ${SIGNAL_ACCOUNT}
+    volumes:
+      - ${HOME}/.hermes:/opt/data
+    networks:
+      - olympus
+    ports:
+      - "127.0.0.1:8642:8642"
+```
+
+- [ ] **Step 2: Validate**
+
+```bash
+cd orchestration-server
+./scripts/compose-up.sh config
+```
+
+Use the Phase 1 wrapper (not bare `docker compose config`) since `API_SERVER_KEY` needs decrypting/exporting for the interpolation to resolve — same caution as Phase 1: this prints the real secret value, so don't paste this output anywhere it'll persist.
+
+Expected: exit 0, `hermes` service shows `SIGNAL_HTTP_URL`/`SIGNAL_ACCOUNT` resolved correctly.
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd ..
+git add orchestration-server/compose.yaml
+git commit -m "feat: wire hermes to the signal-cli daemon"
+```
+
+---
+
+### Task 5: Enable Signal in Hermes (manual — run by you)
+
+**Files:** None — this populates `~/.hermes/config.yaml`, same as Phase 1's `hermes model` step.
+
+**Interfaces:**
+- Consumes: `SIGNAL_HTTP_URL`/`SIGNAL_ACCOUNT` from Task 4, the running `signal-cli` daemon from Task 3.
+- Produces: Signal enabled in `~/.hermes/config.yaml`'s platform config, consumed by Task 6's bring-up.
+
+- [ ] **Step 1: Run `gateway setup` yourself, through Compose**
+
+```bash
+cd orchestration-server
+docker compose run --rm hermes gateway setup
+```
+
+Using `docker compose run` (not a bare `docker run`) matters here — it automatically attaches to the `olympus` network and picks up the `hermes` service's env vars (`SIGNAL_HTTP_URL`, `SIGNAL_ACCOUNT`) from Task 4's config, so the wizard can actually reach the running `signal-cli` daemon to validate against. A bare `docker run` would need `--network olympus` and both `-e` flags typed by hand to get the same result.
+
+Confirmed via `--help` during plan-writing: this command takes zero flags — it's fully interactive. Select Signal from the platform menu when prompted.
+
+- [ ] **Step 2: Verify it landed in `config.yaml` (not secret, safe to view in full — same check as Phase 1's Ollama registration)**
+
+```bash
+docker run --rm -v ~/.hermes:/opt/data --entrypoint cat nousresearch/hermes-agent:latest /opt/data/config.yaml 2>&1 | grep -A5 -i signal
+```
+
+Expected: some entry under the platform config referencing Signal being enabled. Exact key structure wasn't predictable in advance (same as Phase 1's Ollama registration) — confirm here whatever the wizard actually wrote.
+
+- [ ] **Step 3: Lock access to your own identity**
+
+The spec requires access locked to the operator's identity, with `SIGNAL_ALLOW_ALL_USERS` never `true` — check whether the Step 1 wizard already prompted for and set this (look for `SIGNAL_ALLOWED_USERS` or an equivalent authorization key in the same `config.yaml`/`grep -i signal` output from Step 2). If it did, confirm the value looks like your own identity and move on.
+
+If it did **not** — the spec flagged this as genuinely unverified (phone number vs. Signal's internal UUID, not documented anywhere found during design) — determine the right value now from real behavior: message the linked account from your own phone once, then check what identity format shows up:
+
+```bash
+docker exec hermes hermes pairing list
+```
+
+Whatever format appears there (E.164 phone number or a UUID) is what `SIGNAL_ALLOWED_USERS` expects. Add it explicitly to the `hermes` service's `environment:` block in `orchestration-server/compose.yaml`:
+
+```yaml
+      SIGNAL_ALLOWED_USERS: <value from pairing list, in the format it actually appeared>
+```
+
+Then re-run `./scripts/compose-up.sh up -d hermes` to pick up the change, and explicitly confirm `SIGNAL_ALLOW_ALL_USERS` is **not** set anywhere in the compose file or `.env` — it must never be `true`.
+
+- [ ] **Step 4: Commit, if Step 3 modified `compose.yaml`**
+
+```bash
+cd ..
+git add orchestration-server/compose.yaml
+git commit -m "feat: lock signal access to operator identity"
+```
+
+Skip this step if Step 1's wizard already handled authorization and nothing in the repo changed.
+
+---
+
+### Task 6: Bring up Hermes and verify the phase gate
+
+**Files:** None — verification only.
+
+**Interfaces:**
+- Consumes: everything from Tasks 1–5.
+
+- [ ] **Step 1: Bring `hermes` up with the new config**
+
+```bash
+cd orchestration-server
+./scripts/compose-up.sh up -d hermes
+docker compose ps
+```
+
+Expected: both `hermes` and `signal-cli` show `Up`.
+
+- [ ] **Step 2: DM round-trip (manual — run by you)**
+
+From your phone's Signal app, send a message to the linked account. Confirm Hermes responds back through the same thread.
+
+- [ ] **Step 3: Cron delivery test**
+
+```bash
+docker exec hermes hermes cron list
+```
+
+Set up a one-off test cron job that delivers to your Signal thread (interactive — follow whatever `hermes cron` prompts for), confirm it fires and the message arrives in Signal.
+
+- [ ] **Step 4: Pairing revocation test**
+
+```bash
+docker exec hermes hermes pairing list
+```
+
+Approve a second identity via `hermes pairing approve signal CODE` (using a pairing code generated by messaging from a different Signal identity if you have one available, or skip this specific sub-check if you don't have a second identity to test with — note which in your report), then:
+
+```bash
+docker exec hermes hermes pairing revoke <identity>
+```
+
+Confirm that identity's subsequent messages are denied.
+
+- [ ] **Step 5: No commit** — this task is verification only. This completes Phase 2's phase gate (DM round-trip works; cron delivery works; pairing revocation takes effect immediately).
+
+Update the vault's Phase Status note for Phase 2 to reflect completion before starting Phase 3 (Terminal Backend Confinement).
