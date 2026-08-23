@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- `signal-cli` image, digest-pinned: `registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa`.
+- `signal-cli` image, digest-pinned: `registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078`. **Not** the `native` variant — discovered live during Task 3 that it throws a recurring (though non-fatal) `ClassCastException` in its message-receive handling (`RetrieveDeviceNameAction`), a known class of bug in this project's GraalVM native-image builds (reflection/type-metadata mismatches, documented pattern across several upstream issues). Verified the `jre` variant processes the same real message with zero occurrences of the exception. Tradeoff: ~183MB memory vs. ~77MB for `native` — worth it for correctness given ample headroom on this host.
 - `signal-cli` gets no host port mapping — only reachable from other containers on `olympus`.
 - Linked-device session state lives at `~/.signal-cli` (host) → `/data` (container, explicit, not relying on the image's default). Not part of the SOPS `secrets/` pipeline — it's a directory, not a single value.
 - `SIGNAL_ALLOW_ALL_USERS` (and the generic `GATEWAY_ALLOW_ALL_USERS`) never set to `true`.
@@ -59,7 +59,7 @@ No commit for this task — nothing in it touches the repo.
 ```bash
 mkdir -p ~/.signal-cli
 docker run --rm --user "$(id -u):$(id -g)" -v ~/.signal-cli:/data \
-  registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa \
+  registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078 \
   -d /data link -n "HermesAgent" > /tmp/signal-link.txt 2>&1 &
 ```
 
@@ -123,7 +123,7 @@ Expected: the `hermes` service from Phase 1, no `signal-cli` service yet.
 
 ```yaml
   signal-cli:
-    image: registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa
+    image: registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078
     container_name: signal-cli
     user: "${UID}:${GID}"
     command: ["-a", "${SIGNAL_ACCOUNT}", "-d", "/data", "daemon", "--http", "0.0.0.0:8080"]
@@ -157,10 +157,11 @@ Expected: exit 0. `signal-cli` should now appear fully resolved in the output (i
 
 - [ ] **Step 5: Bring it up and verify it's running**
 
-`UID`/`GID` must be exported for Compose's `${UID}:${GID}` interpolation to resolve — bash sets them automatically but doesn't export them by default:
+`UID`/`GID` must be in the environment for Compose's `${UID}:${GID}` interpolation to resolve. **Discovered live:** `$UID` is a real bash builtin (just needs exporting), but `$GID` is not a standard bash variable at all — it's empty by default, and `export UID GID` alone produces a malformed `user: '1000:'` (verified: this exact command was tried and failed before finding the fix below):
 
 ```bash
-export UID GID
+export UID
+export GID=$(id -g)
 docker compose up -d signal-cli
 docker compose ps
 docker logs signal-cli --tail 20
