@@ -54,11 +54,9 @@ No commit for this task — nothing in it touches the repo.
 
 - [ ] **Step 1: Run the link command yourself**
 
-**Discovered live during execution:** the image runs internally as `uid=101` (`signal-cli` user), not root — a bind-mounted host directory owned by your normal user (mode `755`) gives that uid no write access, which fails as `Failed to read local accounts list` (exit 3). Fixed with `--user "$(id -u):$(id -g)"`, verified live (`listAccounts` against the mount went from failing to exit 0). This same flag is needed on the persistent daemon service in Task 3.
-
 ```bash
 mkdir -p ~/.signal-cli
-docker run --rm --user "$(id -u):$(id -g)" -v ~/.signal-cli:/data \
+docker run --rm -v ~/.signal-cli:/data \
   registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa \
   -d /data link -n "HermesAgent" > /tmp/signal-link.txt 2>&1 &
 ```
@@ -125,7 +123,6 @@ Expected: the `hermes` service from Phase 1, no `signal-cli` service yet.
   signal-cli:
     image: registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa
     container_name: signal-cli
-    user: "${UID}:${GID}"
     command: ["-a", "${SIGNAL_ACCOUNT}", "-d", "/data", "daemon", "--http", "0.0.0.0:8080"]
     restart: unless-stopped
     volumes:
@@ -133,8 +130,6 @@ Expected: the `hermes` service from Phase 1, no `signal-cli` service yet.
     networks:
       - olympus
 ```
-
-`user: "${UID}:${GID}"` matches Task 2's live-discovered fix — the image runs internally as `uid=101`, which has no write access to a host-owned bind mount. `UID`/`GID` aren't automatically exported by most shells, so Task 3's bring-up step needs to export them explicitly before `docker compose up` (covered there).
 
 Append this under the existing `services:` key, alongside `hermes`.
 
@@ -157,10 +152,7 @@ Expected: exit 0. `signal-cli` should now appear fully resolved in the output (i
 
 - [ ] **Step 5: Bring it up and verify it's running**
 
-`UID`/`GID` must be exported for Compose's `${UID}:${GID}` interpolation to resolve — bash sets them automatically but doesn't export them by default:
-
 ```bash
-export UID GID
 docker compose up -d signal-cli
 docker compose ps
 docker logs signal-cli --tail 20
