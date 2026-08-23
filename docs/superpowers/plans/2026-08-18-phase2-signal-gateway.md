@@ -259,34 +259,33 @@ Confirmed via `--help` during plan-writing: this command takes zero flags — it
 docker run --rm -v ~/.hermes:/opt/data --entrypoint cat nousresearch/hermes-agent:latest /opt/data/config.yaml 2>&1 | grep -A5 -i signal
 ```
 
-**Discovered live: the wizard writes to `~/.hermes/.env`, not `config.yaml`.** The `grep -A5 -i signal` check above only turns up the pre-existing generic `platform_toolsets` list (present before setup ran too, not proof of anything). Check `.env` instead:
+Expected: some entry under the platform config referencing Signal being enabled. Exact key structure wasn't predictable in advance (same as Phase 1's Ollama registration) — confirm here whatever the wizard actually wrote.
+
+- [ ] **Step 3: Lock access to your own identity**
+
+The spec requires access locked to the operator's identity, with `SIGNAL_ALLOW_ALL_USERS` never `true` — check whether the Step 1 wizard already prompted for and set this (look for `SIGNAL_ALLOWED_USERS` or an equivalent authorization key in the same `config.yaml`/`grep -i signal` output from Step 2). If it did, confirm the value looks like your own identity and move on.
+
+If it did **not** — the spec flagged this as genuinely unverified (phone number vs. Signal's internal UUID, not documented anywhere found during design) — determine the right value now from real behavior: message the linked account from your own phone once, then check what identity format shows up:
 
 ```bash
-docker run --rm -v ~/.hermes:/opt/data --entrypoint sh nousresearch/hermes-agent:latest -c "grep -io '^[A-Z_]*SIGNAL[A-Z_]*=' /opt/data/.env"
+docker exec hermes hermes pairing list
 ```
 
-Expected: `SIGNAL_HTTP_URL=`, `SIGNAL_ACCOUNT=`, and `SIGNAL_ALLOWED_USERS=` (key names only — this command never prints values).
+Whatever format appears there (E.164 phone number or a UUID) is what `SIGNAL_ALLOWED_USERS` expects. Add it explicitly to the `hermes` service's `environment:` block in `orchestration-server/compose.yaml`:
 
-- [ ] **Step 3: Confirm access control — resolved automatically, no manual action needed**
+```yaml
+      SIGNAL_ALLOWED_USERS: <value from pairing list, in the format it actually appeared>
+```
 
-**Discovered live: the wizard already sets `SIGNAL_ALLOWED_USERS` itself** as part of setup — the spec's originally-unverified question (phone number vs. UUID format) resolved on its own: confirmed both `SIGNAL_ACCOUNT` and `SIGNAL_ALLOWED_USERS` are the same length (12 chars, matching E.164 phone format) via a length-only check that never exposed the actual values:
+Then re-run `./scripts/compose-up.sh up -d hermes` to pick up the change, and explicitly confirm `SIGNAL_ALLOW_ALL_USERS` is **not** set anywhere in the compose file or `.env` — it must never be `true`.
+
+- [ ] **Step 4: Commit, if Step 3 modified `compose.yaml`**
 
 ```bash
-docker run --rm -v ~/.hermes:/opt/data --entrypoint sh nousresearch/hermes-agent:latest -c "
-for key in SIGNAL_HTTP_URL SIGNAL_ACCOUNT SIGNAL_ALLOWED_USERS; do
-  val=\$(grep \"^\${key}=\" /opt/data/.env | cut -d= -f2-)
-  if [ -n \"\$val\" ]; then echo \"\${key}: set (\${#val} chars)\"; else echo \"\${key}: EMPTY\"; fi
-done
-"
+cd ..
+git add orchestration-server/compose.yaml
+git commit -m "feat: lock signal access to operator identity"
 ```
-
-Also confirm the hard safety constraint — `SIGNAL_ALLOW_ALL_USERS` must never be `true`:
-
-```bash
-docker run --rm -v ~/.hermes:/opt/data --entrypoint sh nousresearch/hermes-agent:latest -c "grep -i 'SIGNAL_ALLOW_ALL_USERS' /opt/data/.env /opt/data/config.yaml 2>/dev/null || echo 'not set anywhere (good)'"
-```
-
-No commit needed for this step — nothing in the repo needs to change since the wizard's own output already satisfies the spec's access-control requirement.
 
 Skip this step if Step 1's wizard already handled authorization and nothing in the repo changed.
 
