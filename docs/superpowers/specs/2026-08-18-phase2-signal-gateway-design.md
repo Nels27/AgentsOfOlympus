@@ -69,23 +69,12 @@ execution during this design pass, not assumed:
 
 1. **`signal-cli` image, verified by actually pulling and running it
    during this design pass** (not just trusted from docs):
-   `registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078`.
+   `registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa`.
    Confirmed real subcommands via `--help`: `link -n NAME`, `daemon
    [--http [HOST:PORT]]` (defaults to `localhost:8080` — must be set
    explicitly to `0.0.0.0:8080` so it's reachable from Hermes's separate
    container, not just within its own), top-level `-a ACCOUNT`/`--account`
    and `-d DATA_DIR`/`--data-dir` flags (precede the subcommand).
-
-   **`jre` variant, not `native`** — discovered during implementation
-   (Task 3): the `native` (GraalVM-compiled) variant threw a recurring,
-   though non-fatal, `ClassCastException` in its message-receive handling
-   (`RetrieveDeviceNameAction`), matching a documented pattern of
-   reflection/type-metadata bugs across several upstream `signal-cli`
-   issues specific to native-image builds. Verified live: ran the same
-   real message through both variants against the same linked-account
-   data — `native` threw the exception, `jre` processed it with zero
-   occurrences. Tradeoff accepted: `jre` uses more memory at rest (~183MB
-   vs. ~77MB), worth it for correctness given ample headroom on this host.
 
 2. **Volume.** Host path `~/.signal-cli` bind-mounted to an explicit
    container path, `/data` (passed via `-d /data` to every invocation —
@@ -102,7 +91,7 @@ execution during this design pass, not assumed:
    ```bash
    mkdir -p ~/.signal-cli
    docker run --rm -v ~/.signal-cli:/data \
-     registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078 \
+     registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa \
      -d /data link -n "HermesAgent" > /tmp/signal-link.txt 2>&1
    ```
 
@@ -135,7 +124,7 @@ execution during this design pass, not assumed:
 
    ```yaml
    signal-cli:
-     image: registry.gitlab.com/packaging/signal-cli/signal-cli-jre@sha256:87ee76a3d4204a0d271ce2789b8d8b3ac5e715a06fe9ac80d4369c5fe982c078
+     image: registry.gitlab.com/packaging/signal-cli/signal-cli-native@sha256:7238051fc3a0b0fc1004acf3a0283fd919abeddc9d9386153dbe475d5f0a5faa
      container_name: signal-cli
      command: ["-a", "${SIGNAL_ACCOUNT}", "-d", "/data", "daemon", "--http", "0.0.0.0:8080"]
      restart: unless-stopped
