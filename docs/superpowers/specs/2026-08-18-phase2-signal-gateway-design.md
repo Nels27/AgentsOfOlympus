@@ -189,6 +189,26 @@ ever breaks (device removed from the phone's Linked Devices list, account
 issues), the fix *is* re-running the linking procedure — fast and fully
 repeatable, not a special code path.
 
+## Important finding for future phases: no Signal "home channel"
+
+Discovered live during the phase gate (Task 6): every other messaging
+platform Hermes supports (Telegram, Discord, Slack, WhatsApp, etc.) has a
+`<PLATFORM>_HOME_CHANNEL` config option, letting `--deliver <platform>` (a
+bare platform name, no specific target) resolve to a default destination.
+**Signal has no such option** (confirmed absent from `hermes config
+check`'s output, where every other platform's home-channel key appears).
+Bare `--deliver signal` silently "succeeds" without delivering anything —
+no error, just silent non-delivery, which cost real debugging time to
+trace. **The fix: always use an explicit target,
+`signal:+<E.164 number>`, never the bare platform name.**
+
+This isn't just a Phase 2 concern — Phase 5 (observability alerts) and
+Phase 6 (backup success/failure reports) both plan to deliver to the
+operator via Signal per the vault's `Implementation Strategy.md`. Whoever
+implements those phases needs to know to use the explicit-target form, not
+copy the bare-platform pattern that works for Telegram examples elsewhere
+in the vault's own phase descriptions.
+
 ## Open questions
 
 One item resolved during implementation, one still genuinely open:
