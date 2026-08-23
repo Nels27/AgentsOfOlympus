@@ -311,7 +311,7 @@ Expected: both `hermes` and `signal-cli` show `Up`.
 
 - [ ] **Step 2: DM round-trip (manual — run by you)**
 
-From your phone's Signal app, send a message to the linked account. Confirm Hermes responds back through the same thread.
+Send the message via **Notes to Self** — since this account is linked as a device on the operator's own personal Signal account (not a separate bot identity), Notes to Self is the documented, intended way to interact with it, not a workaround. Confirmed via Hermes's own docs: it detects messages addressed to its own linked account and processes them as regular inbound messages, with built-in echo-back/loop protection (sent-timestamp tracking) so its own replies don't get reprocessed as new input. Confirm Hermes responds back in that same Notes to Self thread.
 
 - [ ] **Step 3: Cron delivery test**
 
