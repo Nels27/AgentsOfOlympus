@@ -109,22 +109,45 @@ place** — reachability alone provides no protection on its own.
 
 ## Components
 
-1. **`TERMINAL_BACKEND=docker` + resource limits.** Hermes config, not new
-   infrastructure. `docker_run_as_host_user: true` (non-root inside the
+1. **`terminal.backend: docker` + resource limits.** Hermes config, not new
+   infrastructure. **Correction, verified live:** there is no
+   `TERMINAL_BACKEND` env var — that was an incorrect extrapolation from
+   Phase 1's confirmed `TERMINAL_DOCKER_IMAGE`/`TERMINAL_DOCKER_FORWARD_ENV`
+   examples, which are all `docker_*` sub-keys, not `backend` itself.
+   Setting `backend` requires `hermes config set terminal.backend docker`
+   (a real CLI subcommand, confirmed working and persisting to
+   `config.yaml`). `docker_run_as_host_user: true` (non-root inside the
    container), `container_cpu`/`container_memory` set to sensible bounds
    (exact values TBD at implementation time based on this host's actual
    headroom, not guessed here).
 
 2. **Socket proxy.** `tecnativa/docker-socket-proxy`, env vars
-   `CONTAINERS=1`, `POST=1`, `EXEC=1` (write access plus exec — matches
-   "create/exec/attach/remove"), everything else left at its default-deny.
-   Hermes's container gets `DOCKER_HOST` pointed at the proxy instead of a
-   mounted socket. **Not yet verified**: whether Hermes's own `docker` CLI
-   invocation logic actually respects `DOCKER_HOST` the way the raw CLI
-   does — the `docker` CLI itself universally does, but Hermes's specific
-   invocation pattern wasn't confirmed against real behavior during this
-   design pass. Verify live during implementation before committing to
-   this as working, same rigor as every other phase.
+   `CONTAINERS=1`, `POST=1`, `EXEC=1`, **and `INFO=1`** — everything else
+   left at its default-deny. Hermes's container gets `DOCKER_HOST` pointed
+   at the proxy instead of a mounted socket.
+
+   **Fully verified live, including a real debugging chain worth
+   recording:** the raw `docker` CLI respects `DOCKER_HOST` and works fine
+   through the proxy (`docker version` succeeded immediately). But
+   `hermes doctor` initially still reported `docker daemon not running`
+   even with a working `DOCKER_HOST` and `terminal.backend: docker` set
+   correctly. Root cause, found by testing `docker info` directly (not
+   just `docker version`): **the proxy's default-deny posture blocks the
+   `/info` endpoint** unless `INFO=1` is explicitly set, and Hermes's own
+   internal Docker health check calls `docker info`, not just `docker
+   version` — a real 403 from the proxy, not a Hermes/DOCKER_HOST
+   incompatibility. Adding `INFO=1` resolved it completely: `hermes
+   doctor` now reports `✓ docker (daemon running)`. This was nearly
+   misdiagnosed as "Hermes doesn't respect DOCKER_HOST" (which would have
+   blocked the whole socket-proxy approach) before finding the real,
+   much simpler cause.
+
+   Also confirmed harmless dead end during this investigation: a
+   `socat`-bridged local socket file forwarding to the proxy's TCP
+   endpoint (to see if Hermes's check needed a literal socket path
+   present) was **not** the fix — `INFO=1` was. Not needed in the final
+   design; noted here only so a future reader doesn't re-attempt it
+   independently while debugging something similar.
 
 3. **Worker image.** `FROM nikolaik/python-nodejs:python3.11-nodejs20`
    (Hermes's own default base), add `git` and `ripgrep` via the
@@ -189,7 +212,8 @@ actual worker container (not a bare test container):
 2. **Resource limit values** (`container_cpu`/`container_memory`) — sensible
    bounds based on this host's actual headroom, determined at
    implementation time.
-3. **Whether Hermes's `docker` CLI invocations respect `DOCKER_HOST`** —
-   flagged in Component 2, must be verified live before Phase 3 can be
-   considered complete, not assumed to work because the underlying `docker`
-   CLI generally does.
+
+~~3. Whether Hermes's docker CLI invocations respect DOCKER_HOST~~ —
+**resolved** during design. They do; the real blocker was the proxy's
+`/info` endpoint being denied by default (`INFO=1` fixes it), not a
+DOCKER_HOST incompatibility. See Component 2.
