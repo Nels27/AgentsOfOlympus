@@ -255,14 +255,46 @@ with a filtering HTTP proxy on the worker network instead (the spec's
 originally-considered alternative), which matches on hostname (SNI) rather
 than IP.
 
-- [ ] **Step 3: Verify from inside a real worker-image container**
+**Correction, found live during Task 5 phase-gate verification:** Step 3
+below as originally written tested a standalone `docker run --network
+olympus` container, which is NOT the container Hermes's own terminal
+backend actually creates. Hermes's persistent worker container
+(`terminal.docker_network: true` in its config) attaches to the default
+`bridge` network with no way to name a specific network directly — there
+is no `docker_network_name`-style key. `sniproxy`/`styx_net`/the
+`DOCKER-USER` rules above had **zero effect** on Hermes's real worker
+containers until this was found and fixed: verified live via
+`docker ps --format "table {{.Names}}\t{{.Networks}}"` showing Hermes's
+actual worker containers (named `hermes-<hex>`, per `container_persistent:
+true` reused across invocations) on `bridge`, not `styx_net`.
+
+Fixed via Hermes's `terminal.docker_extra_args` escape hatch (raw args
+passed to the underlying `docker create`/`docker run` Hermes uses):
 
 ```bash
-docker run --rm --network olympus agents-of-olympus/worker:latest sh -c "curl -s -o /dev/null -w 'github.com: %{http_code}\n' --max-time 5 https://github.com"
-docker run --rm --network olympus agents-of-olympus/worker:latest sh -c "curl -s -o /dev/null -w 'example.com (should fail/timeout): %{http_code}\n' --max-time 5 https://example.com"
+docker exec hermes hermes config set terminal.docker_extra_args '["--network=styx_net", "--dns=172.31.0.10"]'
 ```
 
-Expected: `github.com` succeeds (200 or a redirect code), `example.com` times out or fails to connect (blocked by the catch-all `REJECT`).
+Because `container_persistent: true` reuses one existing worker container
+per session, any already-running worker containers must be removed for a
+fresh one to pick up the new args on next invocation:
+
+```bash
+docker ps --filter "name=hermes-" --format "{{.Names}}" | xargs -r docker rm -f
+```
+
+This config lives in `/opt/data/config.yaml` inside the `hermes`
+container, bind-mounted from `${HOME}/.hermes` on the host — it persists
+across container restarts without needing a repo change.
+
+- [ ] **Step 3: Verify from inside Hermes's real worker container (not a standalone test container)**
+
+```bash
+docker exec hermes hermes -z "run the shell command: curl -s -o /dev/null -w 'github.com: %{http_code}\n' --max-time 5 https://github.com"
+docker exec hermes hermes -z "run the shell command: curl -s -o /dev/null -w 'example.com: %{http_code}\n' --max-time 5 https://example.com || echo BLOCKED"
+```
+
+Expected: `github.com` succeeds (200 or a redirect code), `example.com` is blocked/unreachable.
 
 - [ ] **Step 4: No commit for the firewall rules themselves** (they're host/VM state, not repo state) — but document what was applied:
 

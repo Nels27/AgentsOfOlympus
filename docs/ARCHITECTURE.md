@@ -39,6 +39,23 @@ orchestration-server/
      resolve to sniproxy's own IP and get proxied by SNI; everything else
      resolves to its real IP and is blocked at the firewall layer.
 
+     REQUIRED, easy to miss: none of this applies unless Hermes's actual
+     persistent worker container is attached to styx_net. Hermes's
+     terminal.docker_network config is a bare boolean (network on/off),
+     not a network name -- by default its worker container lands on the
+     default bridge network, completely bypassing sniproxy/DOCKER-USER.
+     Fix via Hermes's own config (persisted to ${HOME}/.hermes/config.yaml,
+     survives restarts, not expressible in compose.yaml):
+
+       docker exec hermes hermes config set terminal.docker_extra_args \
+         '["--network=styx_net", "--dns=172.31.0.10"]'
+
+     Because container_persistent: true reuses one worker container across
+     invocations, any already-running worker container(s) (named
+     hermes-<hex>) must be removed for a fresh one to pick up new args:
+
+       docker ps --filter "name=hermes-" --format "{{.Names}}" | xargs -r docker rm -f
+
      DOCKER-USER rules to reapply (via a privileged --net=host container,
      since neither dockerd nor iptables/nft live in the WSL2 distro
      itself -- dockerd runs inside Docker Desktop's own internal VM):
