@@ -39,3 +39,16 @@ services:
       - ${HOME}/.signal-cli:/data
     networks:
       - olympus
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker-socket-proxy
+    environment:
+      CONTAINERS: "1"
+      POST: "1"
+      EXEC: "1"
+      INFO: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - olympus
