@@ -8,6 +8,9 @@ networks:
     internal: true
   argus_net:
     name: argus_net
+  cerberus_net:
+    name: cerberus_net
+    internal: true
 
 services:
   hermes:
@@ -17,15 +20,18 @@ services:
     restart: unless-stopped
     depends_on:
       - signal-cli
+      - cerberus
     environment:
       API_SERVER_ENABLED: "true"
       API_SERVER_KEY: ${API_SERVER_KEY}
       SIGNAL_HTTP_URL: http://signal-cli:8080
       SIGNAL_ACCOUNT: ${SIGNAL_ACCOUNT}
+      DOCKER_HOST: tcp://cerberus:2375
     volumes:
       - ${HOME}/.hermes:/opt/data
     networks:
       - olympus
+      - cerberus_net
     ports:
       - "127.0.0.1:8642:8642"
 
@@ -40,9 +46,9 @@ services:
     networks:
       - olympus
 
-  docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
-    container_name: docker-socket-proxy
+  cerberus:
+    image: tecnativa/docker-socket-proxy@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    container_name: cerberus
     environment:
       CONTAINERS: "1"
       POST: "1"
@@ -51,4 +57,4 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
-      - olympus
+      - cerberus_net
