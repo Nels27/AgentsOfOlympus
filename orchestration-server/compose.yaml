@@ -11,6 +11,11 @@ networks:
   cerberus_net:
     name: cerberus_net
     internal: true
+  styx_net:
+    name: styx_net
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
 
 services:
   hermes:
@@ -58,3 +63,15 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - cerberus_net
+
+  sniproxy:
+    image: ghcr.io/mosajjal/sniproxy@sha256:e9f872e4b7cd5f9c9439a0d3fd441722a4e9b36f3e2fe4232409aae36d4a9617
+    container_name: sniproxy
+    command: ["--config", "/tmp/config.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ../services/worker-image/sniproxy/config.yaml:/tmp/config.yaml:ro
+      - ../services/worker-image/sniproxy/domainlist.csv:/tmp/domainlist.csv:ro
+    networks:
+      styx_net:
+        ipv4_address: 172.31.0.10
