@@ -109,6 +109,17 @@ place** — reachability alone provides no protection on its own.
 
 ## Components
 
+**Naming/network correction, discovered live during implementation (via
+an automated security review, not caught during design):** the socket
+proxy is `cerberus` (the vault's Appendix A pantheon name for it, missed
+below), digest-pinned, on its own dedicated `cerberus_net` internal
+network shared only with `hermes` — not the shared `olympus` network as
+described in Component 2 below. The review correctly flagged that other
+services on `olympus` (`signal-cli`, and anything added later) had no
+legitimate reason to reach a service with container create/exec
+permissions. Read `docker-socket-proxy`/`olympus` below as
+`cerberus`/`cerberus_net` wherever they conflict with this note.
+
 1. **`terminal.backend: docker` + resource limits.** Hermes config, not new
    infrastructure. **Correction, verified live:** there is no
    `TERMINAL_BACKEND` env var — that was an incorrect extrapolation from
