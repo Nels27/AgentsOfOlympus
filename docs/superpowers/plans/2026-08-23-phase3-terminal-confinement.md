@@ -290,7 +290,7 @@ git commit -m "docs: note Phase 3 egress rules live outside compose.yaml, must b
 - [ ] **Step 1: Print environment from inside the real worker container — confirm no secrets**
 
 ```bash
-docker exec hermes hermes chat -z "run the shell command: env | sort"
+docker exec hermes hermes -z "run the shell command: env | sort"
 ```
 
 Review the output yourself (per your stated preference, since this could theoretically surface something unexpected) — expected: no `API_SERVER_KEY`, `SIGNAL_ACCOUNT`, or any credential-shaped values, since the worker container is a separate container from Hermes's own gateway container and never receives its secrets.
@@ -298,7 +298,7 @@ Review the output yourself (per your stated preference, since this could theoret
 - [ ] **Step 2: Confirm a disallowed domain is blocked**
 
 ```bash
-docker exec hermes hermes chat -z "run the shell command: curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://example.com || echo BLOCKED"
+docker exec hermes hermes -z "run the shell command: curl -s -o /dev/null -w '%{http_code}' --max-time 5 https://example.com || echo BLOCKED"
 ```
 
 Expected: `BLOCKED` or a connection failure — confirms Task 4's egress rules apply to Hermes's actual real worker container, not just the standalone test container from Task 4 Step 4.
@@ -306,7 +306,7 @@ Expected: `BLOCKED` or a connection failure — confirms Task 4's egress rules a
 - [ ] **Step 3: Confirm a host path is unreachable**
 
 ```bash
-docker exec hermes hermes chat -z "run the shell command: cat /etc/hostname && ls / && cat /home/nelson/.bashrc 2>&1 || echo NO-HOST-ACCESS"
+docker exec hermes hermes -z "run the shell command: cat /etc/hostname && ls / && cat /home/nelson/.bashrc 2>&1 || echo NO-HOST-ACCESS"
 ```
 
 Expected: the container's own `/etc/hostname`/`/` are visible (its own filesystem), but the host path `/home/nelson/.bashrc` is not reachable — `NO-HOST-ACCESS` or a "No such file" error.
@@ -314,7 +314,7 @@ Expected: the container's own `/etc/hostname`/`/` are visible (its own filesyste
 - [ ] **Step 4: Confirm `DOCKER_HOST`-via-proxy works for a real Hermes invocation (not just the standalone tests from Tasks 1/3)**
 
 ```bash
-docker exec hermes hermes chat -z "run the shell command: echo phase3-live-worker-test-ok"
+docker exec hermes hermes -z "run the shell command: echo phase3-live-worker-test-ok"
 ```
 
 Expected: `phase3-live-worker-test-ok` — confirms the full chain (Hermes → proxy → dockerd → worker container → exec) works end-to-end for a real invocation, not just isolated component tests.
