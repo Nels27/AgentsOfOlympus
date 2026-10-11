@@ -64,8 +64,8 @@ Each box is one session. Gate tests pass only when the control held **and** the 
 
 *Sat Oct 10 → Sun Oct 11 · 2 sessions · 5 h*
 
-- [ ] `2026-10-10` (2.5h) — ThinkCentre: Ubuntu + LUKS install
-- [ ] `2026-10-11` (2.5h) — ThinkCentre: Tailscale join, SSH hardening, updates
+- [X] `2026-10-10` (2.5h) — ThinkCentre: Ubuntu + LUKS install
+- [X] `2026-10-11` (2.5h) — ThinkCentre: Tailscale join, SSH hardening, updates
 
 **Exit criteria:** ThinkCentre is LUKS-encrypted, on the tailnet, SSH key-only, and patched.
 
