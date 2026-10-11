@@ -77,7 +77,7 @@ gantt
 
 # Project Status
 
-This project is currently in Phase 1. Please observe the Road map to understand what that means in detail.
+This project is currently in Phase 0. Please observe the Road map to understand what that means in detail.
 
 # Contributing
 [@nels27](https://github.com/Nels27)
