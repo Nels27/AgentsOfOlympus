@@ -73,10 +73,10 @@ Each box is one session. Gate tests pass only when the control held **and** the 
 
 *Mon Oct 12 → Thu Oct 15 · 4 sessions · 8 h*
 
-- [ ] `2026-10-12` (2h) — Create LVs: Docker, containerd, models, /opt/data, repos
-- [ ] `2026-10-13` (2h) — Delete old volumes; relocate Docker/containerd data-root
-- [ ] `2026-10-14` (2h) — Hades: per-host age keys, .sops.yaml recipients, repo layout
-- [ ] `2026-10-15` (2h) — Revoke OpenClaw creds; dedicated Anthropic key + spend limit; P0 gate
+- [X] `2026-10-12` (2h) — Create LVs: Docker, containerd, models, /opt/data, repos
+- [X] `2026-10-13` (2h) — Delete old volumes; relocate Docker/containerd data-root
+- [X] `2026-10-14` (2h) — Hades: per-host age keys, .sops.yaml recipients, repo layout
+- [X] `2026-10-15` (2h) — Revoke OpenClaw creds; dedicated Anthropic key + spend limit; P0 gate
 
 **Exit criteria:** OpenClaw credentials confirmed revoked; dedicated Anthropic key has a verified spend limit; age keys are per-host and root-only.
 
