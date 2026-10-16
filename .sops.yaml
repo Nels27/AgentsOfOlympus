@@ -1,0 +1,12 @@
+keys:
+  - &breakglass     age1czdsdmacedyfayfhvtjumr6qdt8xh3zpwgkve3gkptsdk6wam43s08nuz0       
+  - &centro_mentis  age1s584nlvc50zhrw7qtwhjnnss75m9s347g87h2vm3wr6ctqljvdns73rcxt  
+  - &argus          age1dhqrnxyar678qzffyzs6k9nawgsy4qdugmxryf63htmtudwmuf0s7mvkjt
+
+creation_rules:
+  - path_regex: secrets/centro-mentis/.*\.sops\.yaml$
+    key_groups:
+      - age: [*centro_mentis, *breakglass]
+  - path_regex: secrets/argus/.*\.sops\.yaml$
+    key_groups:
+      - age: [*argus, *breakglass]
